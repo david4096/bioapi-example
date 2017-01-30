@@ -54,30 +54,6 @@ div.tooltip {
 <script>
 var i = 0;
 
-
-var symbols = [];
-
-function getGeneSymbols(page){
-  d3.json("http://1kgenomes.ga4gh.org/features/search")
-      .header("Content-Type", "application/json")
-	.post(JSON.stringify({featureSetId: "WyIxa2dlbm9tZXMiLCJnZW5jb2RlX3YyNGxpZnQzNyJd",
-    pageToken: page,
-    featureTypes: ['gene'],
-  pageSize: 50}), function (err, res) {
-    res.features.forEach(function(fe) {
-      symbols.push(fe.geneSymbol);
-    })
-    if (res.nextPageToken) {
-      getGeneSymbols(res.nextPageToken);
-    } else {
-      console.log('symbols')
-      console.log(symbols);
-    }
-  })
-}
-
-getGeneSymbols()
-
 var featurelist = [];
 
 
@@ -88,11 +64,8 @@ function loadpage(page){
     pageToken: page,
     geneSymbol: getParameterByName("geneSymbol"),
     featureTypes: [],
-    pageSize: 50}),
+    pageSize: 100}),
         function(error, data) {
-          // request next page
-          i++;
-					console.log(data);
           data.features.forEach(addNode);
 					featurelist = featurelist.concat(data.features);
           addLinks(featurelist);
@@ -100,27 +73,30 @@ function loadpage(page){
             loadpage(data.nextPageToken)
           } else {
 						addLinks(featurelist);
+						// Make sure all the links are made
 						window.setTimeout(function() {
 							addLinks(featurelist);
-						}, 5000);
+						}, 1000);
 						start();
             console.log('done');
           }
       });
 }
 
-loadpage()
+loadpage();
 
 
 var nbyid = {};
+
 function nodeById(nid) {
   return nbyid[nid];
 }
+
 var edges = {};
 function addEdge(edge){
   var n = nodeById(edge.source);
   var t= nodeById(edge.target);
-  if (t !== undefined) {
+  if (t !== undefined && edges[n.id + "-" + nodeById(edge.source).id] != false) {
     edges[n.id + "-" + nodeById(edge.source).id] = true;
     links.push({source: n.index, target: nodeById(edge.target).index, featureType: n.featureType.term});
   }
@@ -149,14 +125,12 @@ function getCalls(startd, end, referenceName, callSetId, page) {
     variantSetId: "WyIxa2dlbm9tZXMiLCJ2cyIsInBoYXNlMy1yZWxlYXNlIl0",
     callSetIds: [callSetId]}),
         function(error, data) {
-          // request next page
           data.variants.forEach(function(v) {
             v.calls.forEach(function(c) {
               calls.push(c);
-							div.html(calls[0].callSetName + ' - ' + getParameterByName("geneSymbol"));
-							document.title = calls[0].callSetName + ' - ' + getParameterByName("geneSymbol");
               if (c.genotype[0] || c.genotype[1]) {
                 nodes.forEach(function(node) {
+									// Find overlapping nodes and tag them with their genotype
                   if (node.start <= v.start && node.end >= v.end) {
                     node.call = c.genotype[0] + c.genotype[1];
                   }
@@ -164,13 +138,11 @@ function getCalls(startd, end, referenceName, callSetId, page) {
               }
             });
           })
+					if (calls.length != 0) {
+						div.html(calls[0].callSetName + ' - ' + getParameterByName("geneSymbol"));
+					}
           if (data.nextPageToken) {
             getCalls(startd, end, referenceName, callSetId, data.nextPageToken)
-          } else {
-            console.log('done');
-						console.log(calls[0]);
-
-            console.log(calls);
           }
       });
 }
@@ -188,8 +160,7 @@ function getParameterByName(name, url) {
 }
 
 function addNode(node){
-  // console.log("adding node")
-  // console.log(node.id)
+	force.stop();
   var feature = node;
   if (node.featureType.term == 'gene') {
     getCalls(feature.start, feature.end, feature.referenceName, getParameterByName("callSetId"), null)
@@ -216,15 +187,15 @@ function dragstart(d) {
 var force = d3.layout.force()
     .nodes(nodes)
     .links(links)
-    .gravity(0.5)
+    .gravity(0.9)
     .charge(function(d) {
 			if (d.featureType.term == 'gene') {
 				// force a clean center layout
 				return -9000;
 			} else if (d.featureType.term == 'transcript') {
-				return -3000;
+				return -1000;
 			} else {
-				return -100;
+				return -200;
 			}
     })
     .linkDistance(function(d) {
@@ -258,13 +229,6 @@ function start() {
   link = link.data(force.links(), function(d) { return d.source.id + "-" + d.target.id; });
   link.enter().insert("line", ".link").attr("class", "link");
   link.exit().remove();
-	svg.selectAll('.description')
-		.data([calls[0]])
-		.enter()
-		.append('text')
-		.text('hi')
-		.attr('fill', 'white')
-		.attr('transform', 'translate( ' + width / 2 + ', 10)')
   node = node.data(force.nodes(), function(d) { return d.id + Math.random();});
   node
     .enter()
@@ -275,27 +239,35 @@ function start() {
 	node.append('text')
 		.text(function(d) {
 			if (d.featureType.term == 'gene') {
-				return d.geneSymbol;
+				return d.geneSymbol +"\n (" + featurelist.length + ")";
 			}
 		})
 		.attr('fill', '#eee')
+		.attr('text-anchor', 'middle')
 
   node.append("circle")
     .attr("r", function(d) {
       if (d.featureType.term == 'gene') {
-        return 2;
+        return 1;
       } else {
         if ('call' in d) {
-          return 2 + Math.pow(3, Number(d.call));
+          return 3 + Math.pow(3, Number(d.call));
         } else {
-          return 2;
+          return 3;
         }
-
       }
     })
   .style('fill', function(d) {
     return colors(d.featureType.term)
-  }).on("mouseup", function(d) {
+  })
+	.attr('stroke', function(d) {
+		if ('call' in d && d.call > 0) {
+			return "white";
+		} else {
+			return "black";
+		}
+	})
+	.on("mouseup", function(d) {
 		if (calls.length > 0) {
 			div.html(calls[0].callSetName + ' - ' + getParameterByName("geneSymbol") + ": <a href=\"http://www.ensembl.org/Multi/Search/Results?q=" + d.name + ";site=ensembl\" target=\"_new\">" + d.name + ", " + d.featureType.term + "</a>");
 
