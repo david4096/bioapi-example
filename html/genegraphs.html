@@ -19,16 +19,28 @@ var i = 0;
 var callsets = [];
 
 function onchange() {
-	selectValue = d3.select('select').property('value')
+	selectValue = d3.select('#callset').property('value')
 	window.location.href = "/genegraphs.html?callSetId=" + selectValue;
 };
+
+function onchangegene() {
+  return;
+}
 
 var select = d3.select('body')
   .append('select')
   .attr('class','select')
+  .attr('id', 'callset')
   .on('change',onchange);
-function getCallSets(page){
-  console.log('huh')
+
+
+  var geneselect = d3.select('body')
+    .append('select')
+    .attr('class','select')
+    .attr('id', 'geneselect')
+    .on('change',onchangegene);
+
+function getCallSets(page) {
   d3.json("http://1kgenomes.ga4gh.org/callsets/search")
       .header("Content-Type", "application/json")
 	.post(JSON.stringify({variantSetId: "WyIxa2dlbm9tZXMiLCJ2cyIsInBoYXNlMy1yZWxlYXNlIl0",
@@ -47,7 +59,6 @@ function getCallSets(page){
     if (res.nextPageToken) {
       getCallSets(res.nextPageToken);
     } else {
-      console.log('callsets')
       console.log(callsets);
     }
   })
@@ -76,7 +87,8 @@ getCallSets();
       featureTypes: ['gene'],
     pageSize: 50}), function (err, res) {
       res.features.forEach(function(fe) {
-        d3.select('body').append('iframe')
+        var div = d3.select('body').append('div')
+        div.append('iframe')
           .attr('src', function() {
             return "/hello_ga4gh_d3.html?geneSymbol=" + fe.geneSymbol + "&callSetId=" + getParameterByName('callSetId') + "&z=" + Math.random();
           })
@@ -86,7 +98,6 @@ getCallSets();
       if (res.nextPageToken) {
         getGeneSymbols(res.nextPageToken);
       } else {
-        console.log('symbols')
         console.log(symbols);
       }
     })
